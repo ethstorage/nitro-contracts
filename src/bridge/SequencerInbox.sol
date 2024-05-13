@@ -47,6 +47,11 @@ import {GasRefundEnabled} from "../libraries/GasRefundEnabled.sol";
 import "../libraries/ArbitrumChecker.sol";
 import {IERC20Bridge} from "./IERC20Bridge.sol";
 
+interface StorageContract {
+    function putBlob(bytes32 key, uint256 blobIdx, uint256 length) external payable;
+    function upfrontPayment() external view returns (uint256);
+}
+
 /**
  * @title  Accepts batches from the sequencer and adds them to the rollup inbox.
  * @notice Contains the inbox accumulator which is the ordering of all data and transactions to be processed by the rollup.
@@ -463,6 +468,22 @@ contract SequencerInbox is DelegateCallAware, GasRefundEnabled, ISequencerInbox 
         if (msg.sender == tx.origin && !isUsingFeeToken) {
             submitBatchSpendingReport(dataHash, seqMessageIndex, block.basefee, blobGas);
         }
+
+        storeAllBlobs()
+    }
+
+    StorageContract public immutable esStorageContract;
+
+    function storeAllBlobs() internal {
+        do {
+            h = blobhash(i);
+            if (h == bytes32(0)) break;
+            if (payment == 0) payment = esStorageContract.upfrontPayment();
+            esStorageContract.putBlob{value: payment}(h, i, 4096 * 32);
+            unchecked {
+                i++;
+            }
+        } while (true);
     }
 
     function addSequencerL2Batch(
